@@ -1,18 +1,18 @@
 # doTweenClip
  
-DoTweenClip is a Unity AnimationClip Custom interpreter, which is designed for - dynamic property & fixableblity. 
+DoTweenClip is a Unity AnimationClip Custom interpreter, which is designed for - dynamic property & fixblity. 
 
 # Usage: 
 
 ## Play a animation
-var tweener =  transform.DoAnimationClipAbsolute(DoTweenClip clip, float duration);
+var tweener =  transform.DoAnimationClipAbsolute(DoTweenClip clip);
 
 This function will do the same thing as Animation.Play("animationClipName")
 
 
 1. Create a DoTweenClip asset in asset menu.
 2. Drag & Drop AnimationClip to DoTweenClip inspector, to import data to DoTweenClip
-3. At run time, load your newDoTweenClip & change some property in DoTweenClipCurve (optional) then play.
+3. At runtime, load your newDoTweenClip & change some property in DoTweenClipCurve (optional) then play.
 
 
 # Feature:
