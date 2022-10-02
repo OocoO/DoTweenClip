@@ -10,6 +10,8 @@ namespace Carotaa.Code
 {
 	public static class DoTweenModuleAnimationClip
 	{
+		// clear before use
+		public static readonly ShareBufferProvider DefaultShareBuffer = new ShareBufferProvider(4);
 		// Similar with Animation.Play()
 		public static Tweener DoAnimationClipAbsolute (this Transform root, DoTweenClip clip)
 		{
@@ -43,10 +45,11 @@ namespace Carotaa.Code
 		
 		public static List<PropertyBridge> GetPropertyBridges(this DoTweenClip clip,  Transform root)
 		{
+			DefaultShareBuffer.Clear();
 			var list = new List<PropertyBridge>();
 			foreach (var curve in clip.Curves)
 			{
-				var success = PropertyBridge.TryGetPropertyBridge(root, curve, out var bridge);
+				var success = PropertyBridge.TryGetPropertyBridge(root, curve, DefaultShareBuffer, out var bridge);
 				if (success)
 				{
 					list.Add(bridge);
@@ -54,18 +57,25 @@ namespace Carotaa.Code
 			}
 			return list;
 		}
-
-		private static Tweener Internal_DoAnimationClip (List<PropertyBridge> bridges, float time)
+		
+		// Use reset to force set value to 0 time
+		public static Tweener Internal_DoAnimationClip (List<PropertyBridge> bridges, float time, bool reset = false)
 		{
 			var progress = 0f;
-			var tweener = DOTween.To(() => progress, x =>
+			void Setter(float x)
 			{
 				progress = x;
 				foreach (var bridge in bridges)
 				{
 					bridge.Value = bridge.Curve.Evaluate(x) + bridge.OffSet;
 				}
-			}, time, time).SetEase(Ease.Linear);
+			}
+
+			if (reset)
+			{
+				Setter(0f);
+			}
+			var tweener = DOTween.To(() => progress, Setter, time, time).SetEase(Ease.Linear);
 
 			return tweener;
 		}
@@ -81,6 +91,8 @@ namespace Carotaa.Code
 			public string PropertyName => _curve.PropertyName;
 			public string PropertyPath => _curve.Path;
 			public Type TargetType => _curve.TargetType;
+
+			public DoTweenClipCurve Origin => _curve;
 
 			// some helper memory buffer
 			public float OffSet;
@@ -105,7 +117,8 @@ namespace Carotaa.Code
 				return _curve != null;
 			}
 
-			public static bool TryGetPropertyBridge (Transform root, DoTweenClipCurve curve, out PropertyBridge setter)
+			public static bool TryGetPropertyBridge (Transform root, DoTweenClipCurve curve, 
+				ShareBufferProvider bufferProvider, out PropertyBridge setter)
 			{
 				// reference check
 				setter = null;
@@ -195,8 +208,15 @@ namespace Carotaa.Code
 						setter = new Enable();
 						break;
 					default:
-						setter = new ReflectionBridge(curve.PropertyName);
-						break;
+						// disable reflection Bridge
+						// setter = new ReflectionBridge(curve.PropertyName);
+						setter = null;
+						return false;
+				}
+
+				if (setter is LocalEulerAngle rotate)
+				{
+					rotate.ShareBuffer = bufferProvider.Get(curve.Path);
 				}
 
 				setter.Init(curve, target);
@@ -362,7 +382,7 @@ namespace Carotaa.Code
 
 		public class LocalEulerAngle : PropertyBridge<Transform>
 		{
-			private float _angle;
+			public float[] ShareBuffer;
 			public LocalEulerAngle(int index) : base(index)
 			{
 			}
@@ -372,12 +392,8 @@ namespace Carotaa.Code
 				get => Target.rotation.eulerAngles[Index];
 				set
 				{
-					// Use to fix quaternion to eulerAngle problem
-					var dAngle = Vector3.zero;
-					dAngle[Index] = value - _angle;
-					_angle = value;
-					var dRotate = Quaternion.Euler(dAngle);
-					Target.rotation = dRotate * Target.rotation;
+					ShareBuffer[Index] = value;
+					Target.rotation = Quaternion.Euler(ShareBuffer[0], ShareBuffer[1], ShareBuffer[2]);
 				}
 			}
 
@@ -385,7 +401,11 @@ namespace Carotaa.Code
 			{
 				base.LateInit();
 
-				_angle = Value;
+				var angle = Target.rotation.eulerAngles;
+				for (var i = 0; i < 3; i++)
+				{
+					ShareBuffer[i] = angle[i];
+				}
 			}
 		}
 
@@ -677,6 +697,32 @@ namespace Carotaa.Code
 			public override int GetHashCode()
 			{
 				return Name != null ? Name.GetHashCode() : 0;
+			}
+		}
+
+		public class ShareBufferProvider
+		{
+			private readonly int _size;
+			private readonly Dictionary<string, float[]> _buffer;
+			public ShareBufferProvider(int size)
+			{
+				_size = size;
+				_buffer = new Dictionary<string, float[]>();
+			}
+
+			public float[] Get(string key)
+			{
+				if (!_buffer.ContainsKey(key))
+				{
+					_buffer[key] = new float[_size];
+				}
+
+				return _buffer[key];
+			}
+
+			public void Clear()
+			{
+				_buffer.Clear();
 			}
 		}
 	}

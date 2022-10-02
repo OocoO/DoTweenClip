@@ -1,6 +1,6 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
-using Carotaa.Code;
 using UnityEditor;
 using UnityEngine;
 
@@ -31,44 +31,46 @@ namespace Carotaa.Code.Editor
 
 		public override void OnInspectorGUI()
 		{
-			base.OnInspectorGUI();
-			
 			EditorGUI.BeginChangeCheck();
 			var clip = EditorGUILayout.ObjectField("Clip", _clip, typeof(AnimationClip), false) as AnimationClip;
 			EditorGUILayout.LabelField("Curves:");
 			
 			if (EditorGUI.EndChangeCheck() && clip)
 			{
-				_clip = clip;
+				Refresh(clip);
 			}
 
-			if (clip && GUILayout.Button("Read Form Animation"))
+			if (clip && GUILayout.Button("Re-Import All Form Animation"))
 			{
-				ReadFrom(clip);
+				var path = AssetDatabase.GUIDToAssetPath(ClipTarget.ClipGuid);
+				clip = AssetDatabase.LoadAssetAtPath<AnimationClip>(path);
+				
+				Refresh(clip);
 			}
-
-			if (clip && GUILayout.Button("Write Back Animation"))
+			
+			if (clip && GUILayout.Button("Re-Import Curve Form Animation"))
 			{
-				WriteBack(clip);
+				var path = AssetDatabase.GUIDToAssetPath(ClipTarget.ClipGuid);
+				clip = AssetDatabase.LoadAssetAtPath<AnimationClip>(path);
+				
+				RefreshCurve(clip);
 			}
-
-			EditorGUILayout.LabelField($"Duration {ClipTarget.Duration}");
-			EditorGUILayout.LabelField($"Frame Rate: {ClipTarget.FrameRate}");
-			EditorGUILayout.LabelField($"GUID: {ClipTarget.ClipGuid}");
-			EditorGUILayout.LabelField($"Curve Count {ClipTarget.Curves.Length}");
-
-			EditorGUI.indentLevel++;
-			foreach(var curve in ClipTarget.Curves)
-			{
-				EditorGUILayout.LabelField($"{curve.Path}/{curve.TargetType}/{curve.PropertyName}, Keys {curve.Curve.keys.Length}");
-			}
-			EditorGUI.indentLevel--;
+			
+			GUI.enabled = false;
+			EditorGUILayout.FloatField("Duration", ClipTarget.Duration);
+			EditorGUILayout.FloatField("Frame Rate", ClipTarget.FrameRate);
+			EditorGUILayout.TextField("GUID",ClipTarget.ClipGuid);
+			GUI.enabled = true;
+			
+			base.OnInspectorGUI();
 		}
 
-		private void ReadFrom(AnimationClip clip)
+		private void Refresh(AnimationClip clip)
 		{
 			if (!clip) return;
-
+			
+			_clip = clip;
+			
 			AssetDatabase.TryGetGUIDAndLocalFileIdentifier(clip, out var guid, out long localId);
 			var list = ListPool<DoTweenClipCurve>.Get();
 				
@@ -80,7 +82,7 @@ namespace Carotaa.Code.Editor
 			{
 				AnimationCurve curve = AnimationUtility.GetEditorCurve(clip, binding);
 				var clipCurve = new DoTweenClipCurve() {
-					Name = GenCurveName(binding.path, binding.propertyName),
+					Name = GenCurveName(binding),
 					Curve = curve,
 					Path = binding.path,
 					PropertyName = binding.propertyName,
@@ -109,21 +111,49 @@ namespace Carotaa.Code.Editor
 
 			serializedObject.ApplyModifiedProperties();
 		}
-
-		private void WriteBack(AnimationClip clip)
+		
+		private void RefreshCurve(AnimationClip clip)
 		{
 			if (!clip) return;
-			
-			foreach (var curve in ClipTarget.Curves)
+
+			try
 			{
-				var binding = EditorCurveBinding.FloatCurve(curve.Path, curve.TargetType, curve.PropertyName);
-				AnimationUtility.SetEditorCurve(clip, binding, curve.Curve);
+				var lut = new Dictionary<string, DoTweenClipCurve>();
+
+				foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+				{
+					AnimationCurve curve = AnimationUtility.GetEditorCurve(clip, binding);
+					var clipCurve = new DoTweenClipCurve() {
+						Name = GenCurveName(binding),
+						Curve = curve,
+						Path = binding.path,
+						PropertyName = binding.propertyName,
+						TargetType = binding.type,
+					};
+				
+					if (IsCurveEmpty(curve, 1f / clip.frameRate)) continue;
+
+					lut.Add(clipCurve.Name, clipCurve);
+				}
+			
+				for (var i = 0; i < _curves.arraySize; i++)
+				{
+					var ele = _curves.GetArrayElementAtIndex(i);
+					var curveName = ele.FindPropertyRelative("m_Name").stringValue;
+					if (lut.TryGetValue(curveName, out var clipCurve))
+					{
+						ele.FindPropertyRelative("m_Curve").animationCurveValue = clipCurve.Curve;
+					}
+				}
+
+				serializedObject.ApplyModifiedProperties();
 			}
-
-			var path = AssetDatabase.GetAssetPath(clip);
-			AssetDatabase.SaveAssets();
+			catch (Exception e)
+			{
+				Debug.LogError($"Refresh Curve Failed with Exception {e}");
+			}
 		}
-
+		
 		// Unity Store some empty curve in animation clips
 		public static bool IsCurveEmpty(AnimationCurve curve, float deltaTime)
 		{
@@ -133,6 +163,7 @@ namespace Carotaa.Code.Editor
 			var startTime = keys[0].time;
 			var endTime = keys.Last().time;
 			var valueLast = curve.Evaluate(startTime);
+			endTime += deltaTime;
 
 			for (var time = startTime + deltaTime; time <= endTime; time += deltaTime)
 			{
@@ -144,12 +175,10 @@ namespace Carotaa.Code.Editor
 
 			return true;
 		}
-
-		public static string GenCurveName(string path, string propertyName)
+		
+		public static string GenCurveName(EditorCurveBinding binding)
 		{
-			// simply path
-			var name = path.Split('/');
-			return $"Animation: {name.Last()}.{propertyName}";
+			return $"{binding.path}.{binding.propertyName}";
 		}
 
 		public static DoTweenClip GenDoTweenClip(AnimationClip aClip)
@@ -164,7 +193,7 @@ namespace Carotaa.Code.Editor
 			{
 				AnimationCurve curve = AnimationUtility.GetEditorCurve(aClip, binding);
 				var clipCurve = new DoTweenClipCurve() {
-					Name = GenCurveName(binding.path, binding.propertyName),
+					Name = GenCurveName(binding),
 					Curve = curve,
 					Path = binding.path,
 					PropertyName = binding.propertyName,

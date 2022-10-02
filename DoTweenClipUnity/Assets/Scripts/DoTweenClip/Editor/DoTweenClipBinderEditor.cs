@@ -20,7 +20,10 @@ namespace Carotaa.Code.Editor
         private DoTweenModuleAnimationClip.PropertyName[] _names;
         private string[] _contents;
         private int _otherIndex;
-        
+        private Tweener _tweener;
+        private float _time;
+        private List<DoTweenModuleAnimationClip.PropertyBridge> _bridges;
+
         private void OnEnable()
         {
             _root = Binder.transform;
@@ -34,32 +37,52 @@ namespace Carotaa.Code.Editor
         public override void OnInspectorGUI()
         {
             base.OnInspectorGUI();
-
+            
             var title = _clip ? "Bind Reference" : "Choice a clip first";
             EditorGUILayout.LabelField(title);
             EditorGUI.BeginChangeCheck();
             var clip = (DoTweenClip) EditorGUILayout.ObjectField("Clip", _clip, typeof(DoTweenClip), false);
+            var clipChange = false;
             if (EditorGUI.EndChangeCheck())
             {
+                clipChange = true;
                 _clip = clip;
             }
 
             if (!_clip) return;
-            
+
+            if (clipChange)
+            {
+                RefreshBridge();
+            }
+
             if (GUILayout.Button("Play"))
             {
-                var tweener = Binder.transform.DoAnimationClipAbsolute(_clip);
-                tweener.SetLink(Binder.gameObject);
-                tweener.OnComplete(() =>
-                {
-                    DOTweenEditorPreview.Stop();
-                });
-                DOTweenEditorPreview.PrepareTweenForPreview(tweener, false);
+                SetPreviewTime(0f);
+                _tweener = DOTween.To(() => _time, SetPreviewTime, _clip.Duration, 
+                    _clip.Duration).SetEase(Ease.Linear);
+                _tweener.SetLoops(-1);
+                DOTweenEditorPreview.PrepareTweenForPreview(_tweener, false);
                 DOTweenEditorPreview.Start();
+            }
+
+            if (GUILayout.Button("Stop"))
+            {
+                StopTween();
+            }
+            
+            EditorGUI.BeginChangeCheck();
+            var value = EditorGUILayout.Slider("Time", _time, 0f, _clip.Duration);
+            if (EditorGUI.EndChangeCheck())
+            {
+                StopTween();
+                _time = value;
+                SetPreviewTime(value);
             }
 
             var curves = _clip.Curves;
             var changed = false;
+            DoTweenModuleAnimationClip.DefaultShareBuffer.Clear();
             EditorGUI.indentLevel++;
             foreach (var curve in curves)
             {
@@ -71,6 +94,35 @@ namespace Carotaa.Code.Editor
             {
                 EditorUtility.SetDirty(_clip);
                 AssetDatabase.SaveAssets();
+                RefreshBridge();
+            }
+        }
+
+        private void StopTween()
+        {
+            if (_tweener != null)
+            {
+                _tweener.Kill(false);
+                _tweener = null;
+                DOTweenEditorPreview.Stop();
+            }
+        }
+
+        private void RefreshBridge()
+        {
+            if (_clip)
+            {
+                _bridges = _clip.GetPropertyBridges(Binder.transform);
+                SetPreviewTime(_time);
+            }
+        }
+
+        private void SetPreviewTime(float time)
+        {
+            _time = time;
+            foreach (var bridge in _bridges)
+            {
+                bridge.Value = bridge.Curve.Evaluate(time);
             }
         }
 
@@ -79,14 +131,15 @@ namespace Carotaa.Code.Editor
             var style = new GUIStyle(GUI.skin.textField);
             var labelColor = EditorStyles.label.normal.textColor;
             var isCurveError =
-                !DoTweenModuleAnimationClip.PropertyBridge.TryGetPropertyBridge(Binder.transform, curve, out var setter);
+                !DoTweenModuleAnimationClip.PropertyBridge.TryGetPropertyBridge(Binder.transform, curve, 
+                    DoTweenModuleAnimationClip.DefaultShareBuffer, out var setter);
 
             if (isCurveError)
             {
                 style.normal.textColor = Color.yellow;
                 EditorStyles.label.normal.textColor = Color.yellow;
             }
-            
+
             EditorGUI.BeginChangeCheck();
             var curveName = EditorGUILayout.TextField("Name", curve.Name);
 
@@ -95,64 +148,77 @@ namespace Carotaa.Code.Editor
                 curve.Name = curveName;
                 changed = true;
             }
+            
             EditorGUI.indentLevel++;
             
-            EditorGUI.BeginChangeCheck();
-            var refObject = curve.FindRefTarget(_root);
-            var refTarget = EditorGUILayout.ObjectField("Ref Target:", refObject, typeof(Object), true);
-            if (EditorGUI.EndChangeCheck())
+            try
             {
-                var trans = GetTargetTrans(refTarget);
-                if (trans)
+                EditorGUI.BeginChangeCheck();
+                var refObject = curve.FindRefTarget(_root);
+                var refTarget = EditorGUILayout.ObjectField("Ref Target:", refObject, typeof(Object), true);
+                if (EditorGUI.EndChangeCheck())
                 {
-                    var success = TryGetHierarchyPath(_root, trans, out var path);
-                    if (success)
+                    var trans = GetTargetTrans(refTarget);
+                    if (trans)
                     {
-                        curve.Path = path;
-                        curve.TargetType = refTarget.GetType();
+                        var success = TryGetHierarchyPath(_root, trans, out var path);
+                        if (success)
+                        {
+                            curve.Path = path;
+                            curve.TargetType = refTarget.GetType();
 
-                        changed = true;
+                            changed = true;
+                        }
                     }
                 }
-            }
-            
-            EditorGUI.BeginChangeCheck();
-            var pathInput = EditorGUILayout.TextField("Path:", curve.Path, style);
-            if (EditorGUI.EndChangeCheck())
-            {
-                curve.Path = pathInput;
-                changed = true;
-            }
-            
-            EditorGUI.BeginChangeCheck();
-            var index = Array.FindIndex(_names, 0,x => x.Name == curve.PropertyName);
-            if (index < 0)
-            {
-                index = _otherIndex;
-            }
-            var select = EditorGUILayout.Popup("Build In Property", index, _contents);
-            var selectPn = _names[select];
-            
-            if (EditorGUI.EndChangeCheck())
-            {
-                curve.PropertyName = selectPn.Name;
-                
-                changed = true;
-            }
+
+                EditorGUI.BeginChangeCheck();
+                var pathInput = EditorGUILayout.TextField("Path:", curve.Path, style);
+                if (EditorGUI.EndChangeCheck())
+                {
+                    curve.Path = pathInput;
+                    changed = true;
+                }
+
+                EditorGUI.BeginChangeCheck();
+                var index = Array.FindIndex(_names, 0, x => x.Name == curve.PropertyName);
+                if (index < 0)
+                {
+                    index = _otherIndex;
+                }
+
+                var select = EditorGUILayout.Popup("Build In Property", index, _contents);
+                var selectPn = _names[select];
+
+                if (EditorGUI.EndChangeCheck())
+                {
+                    curve.PropertyName = selectPn.Name;
+
+                    changed = true;
+                }
 
 
-            EditorGUI.BeginChangeCheck();
-            var text = EditorGUILayout.TextField("Property Name: ", curve.PropertyName, style);
-            
-            if (EditorGUI.EndChangeCheck())
+                EditorGUI.BeginChangeCheck();
+                var text = EditorGUILayout.TextField("Property Name: ", curve.PropertyName, style);
+
+                if (EditorGUI.EndChangeCheck())
+                {
+                    curve.PropertyName = text;
+
+                    changed = true;
+                }
+            }
+            catch (Exception e)
             {
-                curve.PropertyName = text;
-                    
-                changed = true;
+                Console.WriteLine(e);
+                throw;
+            }
+            finally
+            {
+                EditorStyles.label.normal.textColor = labelColor;
+                EditorGUI.indentLevel--;
             }
             
-            EditorStyles.label.normal.textColor = labelColor;
-            EditorGUI.indentLevel--;
             EditorGUILayout.Space();
         }
 
