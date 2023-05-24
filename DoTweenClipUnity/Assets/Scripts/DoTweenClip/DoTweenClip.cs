@@ -18,7 +18,7 @@ namespace Carotaa.Code
 		[SerializeField, HideInInspector, FormerlySerializedAs("m_FrameRate")]
 		private float m_FrameRate;
 
-		[SerializeField, HideInInspector, FormerlySerializedAs("m_Curves")]
+		[SerializeField, FormerlySerializedAs("m_Curves")]
 		private DoTweenClipCurve[] m_Curves;
 
 		public float Duration { get => m_Duration; set => m_Duration = value; }

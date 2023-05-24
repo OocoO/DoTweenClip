@@ -8,45 +8,22 @@ using Object = UnityEngine.Object;
 
 namespace Carotaa.Code
 {
-	public static class DoTweenModuleAnimationClip
+	public static class DoTweenClipExtension
 	{
 		// clear before use
 		public static readonly ShareBufferProvider DefaultShareBuffer = new ShareBufferProvider(4);
 		// Similar with Animation.Play()
-		public static Tweener DoAnimationClipAbsolute (this Transform root, DoTweenClip clip)
+		public static Tweener DoAnimationClip (this Transform root, DoTweenClip clip)
 		{
 			var bridges = clip.GetPropertyBridges(root);
 
-			return Internal_DoAnimationClip(bridges, clip.Duration);
+			return DoPropertyBridges(bridges, clip.Duration);
 		}
-		
-		/// <summary>
-		/// Create a Relative Position Animation Tweener
-		/// </summary>
-		/// <param name="root"></param>
-		/// <param name="clip"></param>
-		/// <param name="refTime">Is used to define how "Relative works"</param>
-		/// <returns></returns>
-		public static Tweener DoAnimationClipRelative (this Transform root, DoTweenClip clip, float refTime = 0f)
-		{
-			var bridges = clip.GetPropertyBridges(root);
-			foreach (var bridge in bridges)
-			{
-				if (bridge is AnchoredPosition ||
-				    bridge is LocalPosition)
-				{
-					// offset
-					bridge.OffSet = bridge.Value - bridge.Curve.Evaluate(refTime);
-				}
-			}
-			
-			return Internal_DoAnimationClip(bridges, clip.Duration);
-		}
-		
-		public static List<PropertyBridge> GetPropertyBridges(this DoTweenClip clip,  Transform root)
+
+		public static List<IPropertyBridge> GetPropertyBridges(this DoTweenClip clip,  Transform root)
 		{
 			DefaultShareBuffer.Clear();
-			var list = new List<PropertyBridge>();
+			var list = new List<IPropertyBridge>();
 			foreach (var curve in clip.Curves)
 			{
 				var success = PropertyBridge.TryGetPropertyBridge(root, curve, DefaultShareBuffer, out var bridge);
@@ -58,8 +35,7 @@ namespace Carotaa.Code
 			return list;
 		}
 		
-		// Use reset to force set value to 0 time
-		public static Tweener Internal_DoAnimationClip (List<PropertyBridge> bridges, float time, bool reset = false)
+		public static Tweener DoPropertyBridges (List<IPropertyBridge> bridges, float time)
 		{
 			var progress = 0f;
 			void Setter(float x)
@@ -67,30 +43,26 @@ namespace Carotaa.Code
 				progress = x;
 				foreach (var bridge in bridges)
 				{
-					bridge.Value = bridge.Curve.Evaluate(x) + bridge.OffSet;
+					bridge.Value = bridge.Curve.Invoke(x);
 				}
 			}
 
-			if (reset)
-			{
-				Setter(0f);
-			}
+			// force reset to 0-time value
+			Setter(0f);
 			var tweener = DOTween.To(() => progress, Setter, time, time).SetEase(Ease.Linear);
 
 			return tweener;
 		}
 
 		// current support limited curve only.
-		public abstract class PropertyBridge
+		public abstract class PropertyBridge : IPropertyBridge
 		{
 			private DoTweenClipCurve _curve;
+			private Func<float, float> _func;
 
 			public abstract float Value { get; set; }
 			
-			public AnimationCurve Curve => _curve.Curve;
-			public string PropertyName => _curve.PropertyName;
-			public string PropertyPath => _curve.Path;
-			public Type TargetType => _curve.TargetType;
+			public Func<float, float> Curve => _func;
 
 			public DoTweenClipCurve Origin => _curve;
 
@@ -104,6 +76,7 @@ namespace Carotaa.Code
 			protected virtual void Init (DoTweenClipCurve curve, object o)
 			{
 				_curve = curve;
+				_func = _curve.Curve.Evaluate;
 			}
 
 			protected virtual void LateInit()
@@ -208,8 +181,7 @@ namespace Carotaa.Code
 						setter = new Enable();
 						break;
 					default:
-						// disable reflection Bridge
-						// setter = new ReflectionBridge(curve.PropertyName);
+						// use dynamic bridges please
 						setter = null;
 						return false;
 				}
@@ -467,123 +439,6 @@ namespace Carotaa.Code
 			}
 		}
 
-		// fieldName -> propertyName;
-		// remove preFix "m_";
-		// The fallback solution
-		public class ReflectionBridge : PropertyBridge<Component>
-		{
-			private readonly string _filedName;
-
-			private FieldInfo _fieldInfo;
-			private PropertyInfo _propertyInfo;
-			
-			public ReflectionBridge(string fieldName) : base(0)
-			{
-				_filedName = fieldName;
-			}
-
-			protected override void Init (DoTweenClipCurve curve, object o)
-			{
-				base.Init(curve, o);
-
-				try
-				{
-					var type = o.GetType();
-					_propertyInfo = FindProperty(type, _filedName);
-
-					if (_propertyInfo != null) return;
-					_fieldInfo = type.GetField(_filedName, 
-						BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-				}
-				catch (Exception e)
-				{
-					Debug.LogError($"Init Failed With Exception {e}");
-				}
-			}
-
-			public override float Value
-			{
-				get
-				{
-					if (_propertyInfo != null)
-					{
-						return (float) _propertyInfo.GetValue(Target);
-					}
-
-					if (_fieldInfo != null)
-					{
-						return (float) _fieldInfo.GetValue(Target);
-					}
-
-					throw new Exception($"Unable to get Value for {_filedName}");
-				}
-
-				set
-				{
-					if (_propertyInfo != null)
-					{
-						_propertyInfo.SetValue(Target, value);
-						return;
-					}
-
-					if (_fieldInfo != null)
-					{
-						_fieldInfo.SetValue(Target, value);
-						return;
-					}
-
-					throw new Exception($"Unable to set Value of {_filedName}");
-				}
-			}
-
-			protected override bool IsLegal()
-			{
-				var baseLegal = base.IsLegal();
-
-				if (!baseLegal) return false;
-
-				// check the 'connection' of bridge.
-				var success = false;
-				try
-				{
-					var value = Value;
-					Value = value;
-
-					success = true;
-				}
-				catch(Exception e)
-				{
-					Debug.LogError($"Bridge Legal Check Failed with exception {e}");
-				}
-
-				return success;
-			}
-
-			private static PropertyInfo FindProperty (Type type, string filedName)
-			{
-				if (filedName.StartsWith("m_"))
-				{
-					filedName = filedName.Substring(2);
-				}
-
-				var info = type.GetProperty(filedName);
-				if (info != null) return info;
-				
-				// try upper case
-				var start = filedName[0];
-				var end = filedName.Substring(1);
-				info = type.GetProperty(char.ToUpper(start) + end, 
-					BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-				if (info != null) return info;
-				
-				// try lower case property
-				info = type.GetProperty(char.ToLower(start) + end, 
-					BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-
-				return info;
-			}
-		}
-
 		public class PropertyName : IEquatable<PropertyName>
 		{
 			public readonly string Name;
@@ -712,6 +567,7 @@ namespace Carotaa.Code
 
 			public float[] Get(string key)
 			{
+				// ReSharper disable once CanSimplifyDictionaryLookupWithTryAdd
 				if (!_buffer.ContainsKey(key))
 				{
 					_buffer[key] = new float[_size];

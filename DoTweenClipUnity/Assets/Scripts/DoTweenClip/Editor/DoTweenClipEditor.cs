@@ -9,7 +9,7 @@ namespace Carotaa.Code.Editor
 	[CustomEditor(typeof(DoTweenClip))]
 	public class DoTweenClipEditor : UnityEditor.Editor
 	{
-		private AnimationClip _clip;
+		private UnityEngine.AnimationClip _clip;
 		private DoTweenClip ClipTarget => target as DoTweenClip;
 
 		private SerializedProperty _duration;
@@ -20,7 +20,7 @@ namespace Carotaa.Code.Editor
 		private void OnEnable()
 		{
 			var path = AssetDatabase.GUIDToAssetPath(ClipTarget.ClipGuid);
-			_clip = AssetDatabase.LoadAssetAtPath<AnimationClip>(path);
+			_clip = AssetDatabase.LoadAssetAtPath<UnityEngine.AnimationClip>(path);
 
 			_duration = serializedObject.FindProperty("m_Duration");
 			_frameRate = serializedObject.FindProperty("m_FrameRate");
@@ -32,7 +32,7 @@ namespace Carotaa.Code.Editor
 		public override void OnInspectorGUI()
 		{
 			EditorGUI.BeginChangeCheck();
-			var clip = EditorGUILayout.ObjectField("Clip", _clip, typeof(AnimationClip), false) as AnimationClip;
+			var clip = EditorGUILayout.ObjectField("Clip", _clip, typeof(UnityEngine.AnimationClip), false) as UnityEngine.AnimationClip;
 			EditorGUILayout.LabelField("Curves:");
 			
 			if (EditorGUI.EndChangeCheck() && clip)
@@ -43,7 +43,7 @@ namespace Carotaa.Code.Editor
 			if (clip && GUILayout.Button("Re-Import All Form Animation"))
 			{
 				var path = AssetDatabase.GUIDToAssetPath(ClipTarget.ClipGuid);
-				clip = AssetDatabase.LoadAssetAtPath<AnimationClip>(path);
+				clip = AssetDatabase.LoadAssetAtPath<UnityEngine.AnimationClip>(path);
 				
 				Refresh(clip);
 			}
@@ -51,7 +51,7 @@ namespace Carotaa.Code.Editor
 			if (clip && GUILayout.Button("Re-Import Curve Form Animation"))
 			{
 				var path = AssetDatabase.GUIDToAssetPath(ClipTarget.ClipGuid);
-				clip = AssetDatabase.LoadAssetAtPath<AnimationClip>(path);
+				clip = AssetDatabase.LoadAssetAtPath<UnityEngine.AnimationClip>(path);
 				
 				RefreshCurve(clip);
 			}
@@ -65,7 +65,7 @@ namespace Carotaa.Code.Editor
 			base.OnInspectorGUI();
 		}
 
-		private void Refresh(AnimationClip clip)
+		private void Refresh(UnityEngine.AnimationClip clip)
 		{
 			if (!clip) return;
 			
@@ -112,7 +112,7 @@ namespace Carotaa.Code.Editor
 			serializedObject.ApplyModifiedProperties();
 		}
 		
-		private void RefreshCurve(AnimationClip clip)
+		private void RefreshCurve(UnityEngine.AnimationClip clip)
 		{
 			if (!clip) return;
 
@@ -181,7 +181,7 @@ namespace Carotaa.Code.Editor
 			return $"{binding.path}.{binding.propertyName}";
 		}
 
-		public static DoTweenClip GenDoTweenClip(AnimationClip aClip)
+		public static DoTweenClip GenDoTweenClip(UnityEngine.AnimationClip aClip)
 		{
 			var clip = CreateInstance<DoTweenClip>();
 			var list = ListPool<DoTweenClipCurve>.Get();

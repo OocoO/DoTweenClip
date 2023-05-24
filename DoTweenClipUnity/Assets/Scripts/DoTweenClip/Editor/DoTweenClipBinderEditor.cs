@@ -17,20 +17,20 @@ namespace Carotaa.Code.Editor
 
         private Transform _root;
         private DoTweenClip _clip;
-        private DoTweenModuleAnimationClip.PropertyName[] _names;
+        private DoTweenClipExtension.PropertyName[] _names;
         private string[] _contents;
         private int _otherIndex;
         private Tweener _tweener;
         private float _time;
-        private List<DoTweenModuleAnimationClip.PropertyBridge> _bridges;
+        private List<IPropertyBridge> _bridges;
 
         private void OnEnable()
         {
             _root = Binder.transform;
-            _names = DoTweenModuleAnimationClip.PropertyName.GetAll();
+            _names = DoTweenClipExtension.PropertyName.GetAll();
             _contents = _names.Select(x => x.ToString()).ToArray();
             _otherIndex = Array.FindIndex(_names, x
-                => Equals(x, DoTweenModuleAnimationClip.PropertyName.Other));
+                => Equals(x, DoTweenClipExtension.PropertyName.Other));
         }
 
 
@@ -82,7 +82,7 @@ namespace Carotaa.Code.Editor
 
             var curves = _clip.Curves;
             var changed = false;
-            DoTweenModuleAnimationClip.DefaultShareBuffer.Clear();
+            DoTweenClipExtension.DefaultShareBuffer.Clear();
             EditorGUI.indentLevel++;
             foreach (var curve in curves)
             {
@@ -122,7 +122,7 @@ namespace Carotaa.Code.Editor
             _time = time;
             foreach (var bridge in _bridges)
             {
-                bridge.Value = bridge.Curve.Evaluate(time);
+                bridge.Value = bridge.Curve.Invoke(time);
             }
         }
 
@@ -131,8 +131,8 @@ namespace Carotaa.Code.Editor
             var style = new GUIStyle(GUI.skin.textField);
             var labelColor = EditorStyles.label.normal.textColor;
             var isCurveError =
-                !DoTweenModuleAnimationClip.PropertyBridge.TryGetPropertyBridge(Binder.transform, curve, 
-                    DoTweenModuleAnimationClip.DefaultShareBuffer, out var setter);
+                !DoTweenClipExtension.PropertyBridge.TryGetPropertyBridge(Binder.transform, curve, 
+                    DoTweenClipExtension.DefaultShareBuffer, out var setter);
 
             if (isCurveError)
             {

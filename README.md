@@ -4,6 +4,10 @@ DoTweenClip is a Unity AnimationClip Custom interpreter, which is designed for -
 
 # Usage: 
 
+## Install
+1. Open Test Scene to see the demo
+2. Copy & Paste the source folder into your project.
+
 ## Play a animation
 var tweener =  transform.DoAnimationClipAbsolute(DoTweenClip clip);
 
