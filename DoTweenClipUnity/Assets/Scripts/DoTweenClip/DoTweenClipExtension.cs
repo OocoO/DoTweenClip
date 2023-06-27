@@ -89,7 +89,6 @@ namespace Carotaa.Code
 			return GetPropertyBridges(clip, root, out _);
 		}
 		
-		// return failed curve list
 		public static List<IPropertyBridge> GetPropertyBridges(this DoTweenClip clip,  Transform root, out List<DoTweenClipCurve> failedList)
 		{
 			DefaultShareBuffer.Clear();
