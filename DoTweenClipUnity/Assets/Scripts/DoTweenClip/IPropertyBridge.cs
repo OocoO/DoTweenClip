@@ -4,7 +4,7 @@ namespace Carotaa.Code
 {
     public interface IPropertyBridge
     {
-        Func<float, float> Curve { get; }
+        float Evaluate(float time);
         float Value { get; set; }
     }
 }

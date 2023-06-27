@@ -112,7 +112,7 @@ namespace Carotaa.Code.Editor
         {
             if (_clip)
             {
-                _bridges = _clip.GetPropertyBridges(Binder.transform);
+                _bridges = _clip.GetDoTweenAnim(Binder.transform).Bridges;
                 SetPreviewTime(_time);
             }
         }
@@ -122,7 +122,7 @@ namespace Carotaa.Code.Editor
             _time = time;
             foreach (var bridge in _bridges)
             {
-                bridge.Value = bridge.Curve.Invoke(time);
+                bridge.Value = bridge.Evaluate(time);
             }
         }
 

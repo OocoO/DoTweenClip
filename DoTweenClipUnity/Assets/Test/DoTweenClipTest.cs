@@ -11,7 +11,9 @@ public class DoTweenClipTest : MonoBehaviour
 
     private void Start()
     {
-        var tweener = transform.DoAnimationClip(m_Clip);
-        tweener.SetLoops(-1);
+        var anim = m_Clip.GetDoTweenAnim(transform);
+        anim.IsLoop = true;
+        
+        anim.Play();
     }
 }

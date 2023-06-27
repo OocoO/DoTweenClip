@@ -8,33 +8,111 @@ using Object = UnityEngine.Object;
 
 namespace Carotaa.Code
 {
+	public struct DoTweenAnim
+	{
+		public float Duration;
+		public List<IPropertyBridge> Bridges;
+
+		// all unsupported anims will play at the same time
+		public NativeAnimation OtherAnims;
+
+		public Tweener Tween;
+		
+		private bool _isLoop;
+
+		// must set before playing
+		public bool IsLoop
+		{
+			get => _isLoop;
+			set
+			{
+				if (Tween != null)
+				{
+					throw new Exception("Set before Playing");
+				}
+				
+				_isLoop = value;
+			}
+		}
+
+		public void Play()
+		{
+			OtherAnims.Play();
+			var tweener = DoTweenClipExtension.DoPropertyBridges(Bridges, Duration);
+			tweener.SetLoops(_isLoop ? -1 : 1);
+
+			var otherAnim = OtherAnims;
+			tweener.OnKill(() =>
+			{
+				otherAnim.Stop();
+			});
+			Tween = tweener;
+		}
+	}
+	
 	public static class DoTweenClipExtension
 	{
 		// clear before use
 		public static readonly ShareBufferProvider DefaultShareBuffer = new ShareBufferProvider(4);
 		// Similar with Animation.Play()
-		public static Tweener DoAnimationClip (this Transform root, DoTweenClip clip)
+		public static DoTweenAnim DoAnimationClip (this Transform root, DoTweenClip clip)
 		{
-			var bridges = clip.GetPropertyBridges(root);
+			var anim = clip.GetDoTweenAnim(root);
+			
+			anim.Play();
 
-			return DoPropertyBridges(bridges, clip.Duration);
+			return anim;
 		}
 
-		public static List<IPropertyBridge> GetPropertyBridges(this DoTweenClip clip,  Transform root)
+		public static DoTweenAnim GetDoTweenAnim(this DoTweenClip clip,  Transform root)
 		{
 			DefaultShareBuffer.Clear();
-			var list = new List<IPropertyBridge>();
+
+			var anim = new DoTweenAnim();
+			var otherAnims = new NativeAnimation(root);
+			
+			var list = GetPropertyBridges(clip, root, out var failedList);
+			foreach(var curve in failedList)
+			{
+				otherAnims.AddCurve(curve);
+			}
+
+			anim.Bridges = list;
+			anim.OtherAnims = otherAnims;
+			anim.Duration = clip.Duration;
+			
+			return anim;
+		}
+		
+		public static List<IPropertyBridge> GetPropertyBridges(this DoTweenClip clip,  Transform root)
+		{
+			return GetPropertyBridges(clip, root, out _);
+		}
+		
+		// return failed curve list
+		public static List<IPropertyBridge> GetPropertyBridges(this DoTweenClip clip,  Transform root, out List<DoTweenClipCurve> failedList)
+		{
+			DefaultShareBuffer.Clear();
+		
+			failedList = new List<DoTweenClipCurve>();
+			var bridges = new List<IPropertyBridge>();
+			
 			foreach (var curve in clip.Curves)
 			{
 				var success = PropertyBridge.TryGetPropertyBridge(root, curve, DefaultShareBuffer, out var bridge);
 				if (success)
 				{
-					list.Add(bridge);
+					bridges.Add(bridge);
+				}
+				else
+				{
+					failedList.Add(curve);
 				}
 			}
-			return list;
-		}
 		
+			return bridges;
+		}
+
 		public static Tweener DoPropertyBridges (List<IPropertyBridge> bridges, float time)
 		{
 			var progress = 0f;
@@ -43,7 +121,7 @@ namespace Carotaa.Code
 				progress = x;
 				foreach (var bridge in bridges)
 				{
-					bridge.Value = bridge.Curve.Invoke(x);
+					bridge.Value = bridge.Evaluate(x);
 				}
 			}
 
@@ -58,25 +136,48 @@ namespace Carotaa.Code
 		public abstract class PropertyBridge : IPropertyBridge
 		{
 			private DoTweenClipCurve _curve;
-			private Func<float, float> _func;
+
+			private AnimationCurve _animationCurve;
 
 			public abstract float Value { get; set; }
-			
-			public Func<float, float> Curve => _func;
+
+			public float Evaluate(float time)
+			{
+				return _animationCurve.Evaluate(time);
+			}
 
 			public DoTweenClipCurve Origin => _curve;
 
-			// some helper memory buffer
-			public float OffSet;
+			public void SetLastKeyValue(float value)
+			{
+				var keys = _animationCurve.keys;
+				var last = keys[keys.Length - 1];
+				last.value = value;
+				keys[keys.Length - 1] = last;
+				_animationCurve = new AnimationCurve(keys);
+			}
+
+			public void SetRelativeEndValue(float endValue)
+			{
+				var keys = _animationCurve.keys;
+				var last = keys[keys.Length - 1];
+				var offset = endValue - last.value;
+
+				for (var i = 0; i < keys.Length; i++)
+				{
+					var key = keys[i];
+					key.value += offset;
+					keys[i] = key;
+				}
+				
+				_animationCurve = new AnimationCurve(keys);
+			}
 			
-			// maybe: extension use
-			// public float[] FloatBuffer;
-			// public object Buffer;
 
 			protected virtual void Init (DoTweenClipCurve curve, object o)
 			{
 				_curve = curve;
-				_func = _curve.Curve.Evaluate;
+				_animationCurve = _curve.Curve;
 			}
 
 			protected virtual void LateInit()
@@ -381,21 +482,47 @@ namespace Carotaa.Code
 			}
 		}
 
-		public class GraphicColor : PropertyBridge<Graphic>
+		public class GraphicColor : PropertyBridge
 		{
-			public GraphicColor(int index) : base(index)
+			public readonly int Index;
+			private Func<float> _getter;
+			private Action<float> _setter;
+			
+			public GraphicColor(int index)
 			{
+				Index = index;
+			}
+
+			protected override void Init(DoTweenClipCurve curve, object o)
+			{
+				base.Init(curve, o);
+
+				if (o is Graphic gTarget)
+				{
+					_getter = () => gTarget.color[Index];
+					_setter = x =>
+					{
+						var color = gTarget.color;
+						color[Index] = x;
+						gTarget.color = color;
+					};
+				}
+				else if (o is SpriteRenderer sTarget)
+				{
+					_getter = () => sTarget.color[Index];
+					_setter = x =>
+					{
+						var color = sTarget.color;
+						color[Index] = x;
+						sTarget.color = color;
+					};
+				}
 			}
 
 			public override float Value
 			{
-				get => Target.color[Index];
-				set
-				{
-					var color = Target.color;
-					color[Index] = value;
-					Target.color = color;
-				}
+				get => _getter.Invoke();
+				set => _setter.Invoke(value);
 			}
 		}
 		
