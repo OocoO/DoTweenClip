@@ -29,6 +29,7 @@ namespace Carotaa.Code
             
             _clip = new AnimationClip();
             _clip.name = "NativeBridge Clip";
+            _clip.legacy = true;
         }
 
         public void AddCurve(DoTweenClipCurve curve)
