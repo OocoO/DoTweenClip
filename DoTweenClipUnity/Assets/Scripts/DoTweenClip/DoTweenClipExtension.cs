@@ -19,7 +19,7 @@ namespace Carotaa.Code
 			return DoPropertyBridges(bridges, clip.Duration);
 		}
 
-		public static List<IPropertyBridge> GetPropertyBridges(this DoTweenClip clip,  Transform root)
+		public static List<IPropertyBridge> GetPropertyBridges(this DoTweenClip clip, Transform root)
 		{
 			var nativeBridge = NativeBridge.Create(root);
 			var bridges = GetPropertyBridges(clip, root, out var failedList);
@@ -247,7 +247,7 @@ namespace Carotaa.Code
 
 		public abstract class PropertyBridge<T> : PropertyBridge where T :Object
 		{
-			protected readonly int Index;
+			public readonly int Index;
 
 			protected PropertyBridge (int index)
 			{

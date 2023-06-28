@@ -32,7 +32,14 @@ namespace Carotaa.Code
 
             OnBackItem(item);
 
-            if (_buffer.Count < _maxSize) _buffer.Push(item);
+            if (_buffer.Count < _maxSize)
+            {
+                _buffer.Push(item);
+            }
+            else
+            {
+                DestroyItem(item);
+            }
         }
 
         protected virtual void OnRentItem(T item)
@@ -42,6 +49,8 @@ namespace Carotaa.Code
         protected virtual void OnBackItem(T item)
         {
         }
+
+        protected abstract void DestroyItem(T item);
     }
 
     public class ListPool<T> : ObjectPool<List<T>>
@@ -55,6 +64,10 @@ namespace Carotaa.Code
         protected override void OnBackItem(List<T> item)
         {
             item.Clear();
+        }
+
+        protected override void DestroyItem(List<T> item)
+        {
         }
 
         public static List<T> Get()

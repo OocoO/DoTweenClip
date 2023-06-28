@@ -100,11 +100,7 @@ namespace Carotaa.Code.Editor
 			{
 				var ele = _curves.GetArrayElementAtIndex(i);
 				var curve = array[i];
-				ele.FindPropertyRelative("m_Name").stringValue = curve.Name;
-				ele.FindPropertyRelative("m_Path").stringValue = curve.Path;
-				ele.FindPropertyRelative("m_TypeAssemblyQualifiedName").stringValue = curve.TargetType.AssemblyQualifiedName;
-				ele.FindPropertyRelative("m_PropertyName").stringValue = curve.PropertyName;
-				ele.FindPropertyRelative("m_Curve").animationCurveValue = curve.Curve;
+				FullCopy(ele, curve);
 			}
 			
 			ListPool<DoTweenClipCurve>.Release(list);
@@ -143,8 +139,21 @@ namespace Carotaa.Code.Editor
 					if (lut.TryGetValue(curveName, out var clipCurve))
 					{
 						ele.FindPropertyRelative("m_Curve").animationCurveValue = clipCurve.Curve;
+						lut.Remove(curveName);
 					}
 				}
+				
+				// new curves
+				var newCurves = lut.Values.ToArray();
+				var currentSize = _curves.arraySize;
+				_curves.arraySize = currentSize + newCurves.Length;
+				for (var i = 0; i < newCurves.Length; i++)
+				{
+					var ele = _curves.GetArrayElementAtIndex(currentSize + i);
+					var curve = newCurves[i];
+					FullCopy(ele, curve);
+				}
+				
 
 				serializedObject.ApplyModifiedProperties();
 			}
@@ -153,7 +162,16 @@ namespace Carotaa.Code.Editor
 				Debug.LogError($"Refresh Curve Failed with Exception {e}");
 			}
 		}
-		
+
+		private static void FullCopy(SerializedProperty ele, DoTweenClipCurve curve)
+		{
+			ele.FindPropertyRelative("m_Name").stringValue = curve.Name;
+			ele.FindPropertyRelative("m_Path").stringValue = curve.Path;
+			ele.FindPropertyRelative("m_TypeAssemblyQualifiedName").stringValue = curve.TargetType.AssemblyQualifiedName;
+			ele.FindPropertyRelative("m_PropertyName").stringValue = curve.PropertyName;
+			ele.FindPropertyRelative("m_Curve").animationCurveValue = curve.Curve;
+		}
+
 		// Unity Store some empty curve in animation clips
 		public static bool IsCurveEmpty(AnimationCurve curve, float deltaTime)
 		{

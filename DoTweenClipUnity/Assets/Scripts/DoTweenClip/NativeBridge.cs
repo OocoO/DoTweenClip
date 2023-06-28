@@ -6,7 +6,7 @@ namespace Carotaa.Code
     public class NativeBridge : MonoBehaviour, IPropertyBridge
     {
         private GameObject _root;
-        private AnimationClip _clip;
+        [SerializeField] private AnimationClip _clip;
         private float _playTime;
 
         public static NativeBridge Create(Transform root)
@@ -25,12 +25,10 @@ namespace Carotaa.Code
 
         private void BindClip()
         {
-            if (_clip)
-            {
-                Object.Destroy(_clip);
-            }
+            Clean();
             
             _clip = new AnimationClip();
+            _clip.name = "NativeBridge Clip";
         }
 
         public void AddCurve(DoTweenClipCurve curve)
@@ -49,15 +47,23 @@ namespace Carotaa.Code
             set
             {
                 _playTime = value;
+
+                if (_clip.empty) return;
+                
                 _clip.SampleAnimation(_root, _playTime);
             }
         }
 
         public void OnDestroy()
         {
+            Clean();
+        }
+
+        private void Clean()
+        {
             if (_clip)
             {
-                Object.Destroy(_clip);
+                Object.DestroyImmediate(_clip);
             }
         }
     }
