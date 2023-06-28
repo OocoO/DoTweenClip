@@ -112,7 +112,7 @@ namespace Carotaa.Code.Editor
         {
             if (_clip)
             {
-                _bridges = _clip.GetDoTweenAnim(Binder.transform).Bridges;
+                _bridges = _clip.GetPropertyBridges(_root);
                 SetPreviewTime(_time);
             }
         }

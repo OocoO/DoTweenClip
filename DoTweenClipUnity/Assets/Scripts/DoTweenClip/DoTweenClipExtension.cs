@@ -8,85 +8,28 @@ using Object = UnityEngine.Object;
 
 namespace Carotaa.Code
 {
-	public struct DoTweenAnim
-	{
-		public float Duration;
-		public List<IPropertyBridge> Bridges;
-
-		// all unsupported anims will play at the same time
-		public NativeAnimation OtherAnims;
-
-		public Tweener Tween;
-		
-		private bool _isLoop;
-
-		// must set before playing
-		public bool IsLoop
-		{
-			get => _isLoop;
-			set
-			{
-				if (Tween != null)
-				{
-					throw new Exception("Set before Playing");
-				}
-				
-				_isLoop = value;
-			}
-		}
-
-		public void Play()
-		{
-			OtherAnims.Play();
-			var tweener = DoTweenClipExtension.DoPropertyBridges(Bridges, Duration);
-			tweener.SetLoops(_isLoop ? -1 : 1);
-
-			var otherAnim = OtherAnims;
-			tweener.OnKill(() =>
-			{
-				otherAnim.Stop();
-			});
-			Tween = tweener;
-		}
-	}
-	
 	public static class DoTweenClipExtension
 	{
 		// clear before use
 		public static readonly ShareBufferProvider DefaultShareBuffer = new ShareBufferProvider(4);
 		// Similar with Animation.Play()
-		public static DoTweenAnim DoAnimationClip (this Transform root, DoTweenClip clip)
+		public static Tween DoAnimationClip (this Transform root, DoTweenClip clip)
 		{
-			var anim = clip.GetDoTweenAnim(root);
-			
-			anim.Play();
-
-			return anim;
+			var bridges = clip.GetPropertyBridges(root);
+			return DoPropertyBridges(bridges, clip.Duration);
 		}
 
-		public static DoTweenAnim GetDoTweenAnim(this DoTweenClip clip,  Transform root)
-		{
-			DefaultShareBuffer.Clear();
-
-			var anim = new DoTweenAnim();
-			var otherAnims = new NativeAnimation(root);
-			
-			var list = GetPropertyBridges(clip, root, out var failedList);
-			foreach(var curve in failedList)
-			{
-				otherAnims.AddCurve(curve);
-			}
-
-			anim.Bridges = list;
-			anim.OtherAnims = otherAnims;
-			anim.Duration = clip.Duration;
-			
-			return anim;
-		}
-		
 		public static List<IPropertyBridge> GetPropertyBridges(this DoTweenClip clip,  Transform root)
 		{
-			return GetPropertyBridges(clip, root, out _);
+			var nativeBridge = NativeBridge.Create(root);
+			var bridges = GetPropertyBridges(clip, root, out var failedList);
+			foreach(var failed in failedList)
+			{
+				nativeBridge.AddCurve(failed);
+			}
+			
+			bridges.Add(nativeBridge);
+			return bridges;
 		}
 		
 		public static List<IPropertyBridge> GetPropertyBridges(this DoTweenClip clip,  Transform root, out List<DoTweenClipCurve> failedList)
