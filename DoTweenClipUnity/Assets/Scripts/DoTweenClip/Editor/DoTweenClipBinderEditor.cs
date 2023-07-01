@@ -112,7 +112,8 @@ namespace Carotaa.Code.Editor
         {
             if (_clip)
             {
-                _bridges = _clip.GetPropertyBridges(_root);
+                // do not use native bridge at editor time preview
+                _bridges = _clip.GetPropertyBridges(_root, out var failedList);
                 SetPreviewTime(_time);
             }
         }
@@ -133,11 +134,15 @@ namespace Carotaa.Code.Editor
             var isCurveError =
                 !DoTweenClipExtension.PropertyBridge.TryGetPropertyBridge(Binder.transform, curve, 
                     DoTweenClipExtension.DefaultShareBuffer, out var setter);
+            var targetTest = curve.FindRefTarget(Binder.transform);
 
+            var isTargetError = targetTest == null;
+            var errorColor = isTargetError ? Color.red : Color.gray;
+            
             if (isCurveError)
             {
-                style.normal.textColor = Color.yellow;
-                EditorStyles.label.normal.textColor = Color.yellow;
+                style.normal.textColor = errorColor;
+                EditorStyles.label.normal.textColor = errorColor;
             }
 
             EditorGUI.BeginChangeCheck();

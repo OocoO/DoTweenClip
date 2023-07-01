@@ -74,7 +74,7 @@ namespace Carotaa.Code
 			return tweener;
 		}
 
-		// current support limited curve only.
+		// un-supported curve: use NativeBridge or DynamicBridge to support
 		public abstract class PropertyBridge : IPropertyBridge
 		{
 			private DoTweenClipCurve _curve;
@@ -224,8 +224,7 @@ namespace Carotaa.Code
 						setter = new Enable();
 						break;
 					default:
-						// use dynamic bridges please
-						setter = null;
+						// use dynamic bridges or native bridges
 						return false;
 				}
 
@@ -235,8 +234,11 @@ namespace Carotaa.Code
 				}
 
 				setter.Init(curve, target);
-				
-				if (!setter.IsLegal()) return false;
+
+				if (!setter.IsLegal())
+				{
+					return false;
+				}
 
 				setter.LateInit();
 				
@@ -259,12 +261,7 @@ namespace Carotaa.Code
 			protected override void Init (DoTweenClipCurve curve, object o)
 			{
 				base.Init(curve, o);
-				Target = o as T;
-			}
-
-			protected override bool IsLegal()
-			{
-				return base.IsLegal() && Target != null;
+				Target = (T) o;
 			}
 		}
 
@@ -429,6 +426,7 @@ namespace Carotaa.Code
 			public readonly int Index;
 			private Func<float> _getter;
 			private Action<float> _setter;
+			private bool _isLegal;
 			
 			public GraphicColor(int index)
 			{
@@ -439,6 +437,7 @@ namespace Carotaa.Code
 			{
 				base.Init(curve, o);
 
+				_isLegal = true;
 				if (o is Graphic gTarget)
 				{
 					_getter = () => gTarget.color[Index];
@@ -459,6 +458,10 @@ namespace Carotaa.Code
 						sTarget.color = color;
 					};
 				}
+				else
+				{
+					_isLegal = false;
+				}
 			}
 
 			public override float Value
@@ -466,6 +469,8 @@ namespace Carotaa.Code
 				get => _getter.Invoke();
 				set => _setter.Invoke(value);
 			}
+			
+			protected override bool IsLegal() => _isLegal;
 		}
 		
 		public class CanvasGroupAlpha : PropertyBridge<CanvasGroup>
